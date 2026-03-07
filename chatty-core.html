@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHATTY CORE - Deep Blue Purple Jelly Lifeform</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 50%, #071233 0%, #02081a 42%, #000005 100%);
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    }
+
+    canvas { display: block; }
+
+    .ui {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .title {
+      position: absolute;
+      top: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(236, 234, 255, 0.96);
+      font-size: clamp(18px, 2.2vw, 30px);
+      letter-spacing: 0.35em;
+      text-shadow:
+        0 0 12px rgba(126, 92, 255, 0.92),
+        0 0 24px rgba(50, 190, 255, 0.12);
+      white-space: nowrap;
+    }
+
+    .sub {
+      position: absolute;
+      top: 66px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(205, 220, 255, 0.66);
+      font-size: clamp(10px, 1vw, 12px);
+      letter-spacing: 0.18em;
+      white-space: nowrap;
+    }
+
+    .hint {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(220, 228, 255, 0.72);
+      font-size: clamp(11px, 1.1vw, 14px);
+      letter-spacing: 0.08em;
+      text-shadow:
+        0 0 10px rgba(130, 96, 255, 0.16),
+        0 0 14px rgba(76, 226, 255, 0.05);
+      white-space: nowrap;
+    }
+
+    .status {
+      position: absolute;
+      bottom: 54px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0);
+      font-size: clamp(12px, 1.4vw, 16px);
+      letter-spacing: 0.18em;
+      text-shadow:
+        0 0 12px rgba(255,255,255,0.18),
+        0 0 22px rgba(130, 96, 255, 0.30),
+        0 0 28px rgba(60, 225, 255, 0.10);
+      opacity: 0;
+      transition: opacity 0.45s ease, color 0.45s ease;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <div class="title">CHATTY CORE</div>
+    <div class="sub">deep space · jelly amoeba · ringless dokun pulse</div>
+    <div class="status" id="status">ready</div>
+    <div class="hint">click / tap：鼓動 → 宇宙 → 静寂　・　drag：回転</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // =============================
+    // Scene
+    // =============================
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(
+      42,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      300
+    );
+    camera.position.set(0, 0.14, 11);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000005, 1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.84;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.appendChild(renderer.domElement);
+
+    const root = new THREE.Group();
+    scene.add(root);
+
+    // =============================
+    // UI
+    // =============================
+    const statusEl = document.getElementById("status");
+    function flashStatus(text) {
+      statusEl.textContent = text;
+      statusEl.style.opacity = "1";
+      statusEl.style.color = "rgba(255,255,255,0.96)";
+      clearTimeout(flashStatus._timer);
+      flashStatus._timer = setTimeout(() => {
+        statusEl.style.opacity = "0";
+        statusEl.style.color = "rgba(255,255,255,0)";
+      }, 1300);
+    }
+
+    // =============================
+    // Palette
+    // =============================
+    const PALETTE = {
+      bodyBase:   new THREE.Color(0x2115c9), // 深い青紫
+      bodyMid:    new THREE.Color(0x3828ef),
+      bodyHi:     new THREE.Color(0x6a4fff), // 明るい青紫
+      bodyGlow:   new THREE.Color(0x090d7c), // 深い藍の発光
+      coreWhite:  new THREE.Color(0xbfefff), // 白シアンは控えめ
+      coreCyan:   new THREE.Color(0x49dfff), // コアのシアン
+      auraPurple: new THREE.Color(0x8550ff), // 外縁の紫
+      auraCyan:   new THREE.Color(0x15c7ff), // 補助シアン
+      deepCyan:   new THREE.Color(0x0a86ff), // 深いシアン
+      particleA:  new THREE.Color(0xdce8ff), // ほの青白
+      particleB:  new THREE.Color(0x76ebff), // シアン粒子
+      particleC:  new THREE.Color(0x8f71ff)  // 青紫粒子
+    };
+
+    // =============================
+    // Lights
+    // =============================
+    scene.add(new THREE.AmbientLight(0x0b1230, 0.65));
+
+    const lightA = new THREE.PointLight(0x7e52ff, 2.80, 120);
+    lightA.position.set(5, 4, 7);
+    scene.add(lightA);
+
+    const lightB = new THREE.PointLight(0x17c8ff, 1.35, 120);
+    lightB.position.set(-5, -2, 7);
+    scene.add(lightB);
+
+    const lightC = new THREE.PointLight(0xbfe6ff, 0.55, 60);
+    lightC.position.set(0, 0, 5);
+    scene.add(lightC);
+
+    // =============================
+    // Stars
+    // =============================
+    function createStars(count, spread, size, color, opacity) {
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * spread;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * spread;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * spread;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        color,
+        size,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      return new THREE.Points(geo, mat);
+    }
+
+    const starsFar = createStars(2200, 180, 0.06, 0xbcaeff, 0.34);
+    const starsNear = createStars(700, 90, 0.10, 0x8edcff, 0.20);
+    scene.add(starsFar, starsNear);
+
+    // =============================
+    // Blob Geometry
+    // =============================
+    const geometry = new THREE.IcosahedronGeometry(2.2, 18);
+    const originalPositions = geometry.attributes.position.array.slice();
+    const positionAttr = geometry.attributes.position;
+    const vertexCount = positionAttr.count;
+
+    const seeds = new Float32Array(vertexCount);
+    for (let i = 0; i < vertexCount; i++) {
+      seeds[i] = Math.random() * 1000;
+    }
+
+    // =============================
+    // Main Body
+    // =============================
+    const coreMaterial = new THREE.MeshPhongMaterial({
+      color: PALETTE.bodyBase.clone(),
+      emissive: PALETTE.bodyGlow.clone(),
+      emissiveIntensity: 1.05,
+      transparent: true,
+      opacity: 0.86,
+      specular: new THREE.Color(0x1e22a8),
+      shininess: 16,
+      side: THREE.DoubleSide
+    });
+
+    const blob = new THREE.Mesh(geometry, coreMaterial);
+    root.add(blob);
+
+    const wire = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xbfb8ff,
+        transparent: true,
+        opacity: 0.010,
+        wireframe: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    root.add(wire);
+
+    const aura = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: PALETTE.auraPurple.clone(),
+        transparent: true,
+        opacity: 0.11,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    aura.scale.setScalar(1.18);
+    root.add(aura);
+
+    const outerAura = new THREE.Mesh(
+      new THREE.SphereGeometry(3.16, 36, 36),
+      new THREE.MeshBasicMaterial({
+        color: PALETTE.auraCyan.clone(),
+        transparent: true,
+        opacity: 0.035,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    root.add(outerAura);
+
+    const bloomShell1 = new THREE.Mesh(
+      new THREE.SphereGeometry(2.88, 32, 32),
+      new THREE.MeshBasicMaterial({
+        color: PALETTE.auraPurple.clone(),
+        transparent: true,
+        opacity: 0.070,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    root.add(bloomShell1);
+
+    const bloomShell2 = new THREE.Mesh(
+      new THREE.SphereGeometry(3.58, 32, 32),
+      new THREE.MeshBasicMaterial({
+        color: PALETTE.auraCyan.clone(),
+        transparent: true,
+        opacity: 0.018,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    root.add(bloomShell2);
+
+    // =============================
+    // Inner Core
+    // =============================
+    const innerCoreMaterial = new THREE.MeshPhongMaterial({
+      color: new THREE.Color(0x6b63ff),
+      emissive: new THREE.Color(0x2bcfff),
+      emissiveIntensity: 0.58,
+      transparent: true,
+      opacity: 0.34,
+      shininess: 18
+    });
+
+    const innerCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.56, 24, 24),
+      innerCoreMaterial
+    );
+    root.add(innerCore);
+
+    const innerCoreShell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.88, 20, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0xbfefff,
+        transparent: true,
+        opacity: 0.055,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    root.add(innerCoreShell);
+
+    const innerGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(1.20, 28, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0x49dfff,
+        transparent: true,
+        opacity: 0.065,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    root.add(innerGlow);
+
+    // =============================
+    // Inner Sparkles
+    // =============================
+    const innerSparkCount = 90;
+    const innerSparkPos = new Float32Array(innerSparkCount * 3);
+    const innerSparkCol = new Float32Array(innerSparkCount * 3);
+
+    for (let i = 0; i < innerSparkCount; i++) {
+      const r = 0.22 + Math.random() * 0.65;
+      const a = Math.random() * Math.PI * 2;
+      const b = Math.random() * Math.PI;
+
+      const x = Math.cos(a) * Math.sin(b) * r;
+      const y = Math.sin(a) * Math.sin(b) * r;
+      const z = Math.cos(b) * r;
+
+      innerSparkPos[i * 3] = x;
+      innerSparkPos[i * 3 + 1] = y;
+      innerSparkPos[i * 3 + 2] = z;
+
+      const roll = Math.random();
+      const c = roll < 0.30 ? PALETTE.particleA : (roll < 0.65 ? PALETTE.particleB : PALETTE.particleC);
+
+      innerSparkCol[i * 3] = c.r;
+      innerSparkCol[i * 3 + 1] = c.g;
+      innerSparkCol[i * 3 + 2] = c.b;
+    }
+
+    const innerSparkGeo = new THREE.BufferGeometry();
+    innerSparkGeo.setAttribute("position", new THREE.BufferAttribute(innerSparkPos, 3));
+    innerSparkGeo.setAttribute("color", new THREE.BufferAttribute(innerSparkCol, 3));
+
+    const innerSparkles = new THREE.Points(
+      innerSparkGeo,
+      new THREE.PointsMaterial({
+        size: 0.050,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    root.add(innerSparkles);
+
+    // =============================
+    // Ringless Pulse Shells
+    // =============================
+    const pulseShellGroup = new THREE.Group();
+    root.add(pulseShellGroup);
+
+    function spawnPulseShell() {
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(2.34, 26, 26),
+        new THREE.MeshBasicMaterial({
+          color: 0x9168ff,
+          transparent: true,
+          opacity: 0.14,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.BackSide
+        })
+      );
+      shell.userData = { life: 0, maxLife: 0.60, speed: 1.55 };
+      pulseShellGroup.add(shell);
+    }
+
+    // =============================
+    // Outer Particles
+    // =============================
+    const particleCount = 320;
+    const pPositions = new Float32Array(particleCount * 3);
+    const pOffsets = new Float32Array(particleCount);
+    const pColors = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount; i++) {
+      const r = 2.85 + Math.random() * 2.25;
+      const a = Math.random() * Math.PI * 2;
+      const b = Math.random() * Math.PI;
+
+      pPositions[i * 3] = Math.cos(a) * Math.sin(b) * r;
+      pPositions[i * 3 + 1] = Math.sin(a) * Math.sin(b) * r;
+      pPositions[i * 3 + 2] = Math.cos(b) * r;
+
+      pOffsets[i] = Math.random() * 100;
+
+      const roll = Math.random();
+      const c = roll < 0.25 ? PALETTE.particleA : (roll < 0.55 ? PALETTE.particleB : PALETTE.particleC);
+
+      pColors[i * 3] = c.r;
+      pColors[i * 3 + 1] = c.g;
+      pColors[i * 3 + 2] = c.b;
+    }
+
+    const particleGeo = new THREE.BufferGeometry();
+    particleGeo.setAttribute("position", new THREE.BufferAttribute(pPositions, 3));
+    particleGeo.setAttribute("color", new THREE.BufferAttribute(pColors, 3));
+
+    const particles = new THREE.Points(
+      particleGeo,
+      new THREE.PointsMaterial({
+        size: 0.060,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.52,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    root.add(particles);
+
+    // =============================
+    // State
+    // =============================
+    let pulse = 0;
+    let pulseTarget = 0;
+    let morphPhase = Math.random() * 10;
+    let morphSeedA = Math.random() * 10;
+    let morphSeedB = Math.random() * 10;
+    let morphAmount = 0.28;
+    let morphJolt = 0;
+
+    function triggerVisualPulse(strength) {
+      pulseTarget = Math.max(pulseTarget, strength);
+      morphJolt = Math.max(morphJolt, 1.18 * strength);
+      morphPhase += 1.05 + Math.random() * 1.4;
+      morphSeedA = Math.random() * 12;
+      morphSeedB = Math.random() * 12;
+      morphAmount = 0.24 + Math.random() * 0.10;
+      spawnPulseShell();
+    }
+
+    // =============================
+    // Audio
+    // =============================
+    let audioCtx = null;
+    let masterBus = null;
+    let heartbeatGain = null;
+    let cosmicGain = null;
+    let analyser = null;
+    let dataArray = null;
+
+    let mode = 0; // 0 silent, 1 heartbeat, 2 cosmic
+    let hbIntervalId = null;
+    let cosmicOsc1 = null;
+    let cosmicOsc2 = null;
+    let cosmicLfo = null;
+    let noiseBuffer = null;
+
+    function createNoiseBuffer(durationSec) {
+      const length = Math.floor(audioCtx.sampleRate * durationSec);
+      const buffer = audioCtx.createBuffer(1, length, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+
+      for (let i = 0; i < length; i++) {
+        const t = i / length;
+        const env = Math.pow(1 - t, 2.8);
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+      return buffer;
+    }
+
+    function ensureAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.85;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        masterBus = audioCtx.createGain();
+        masterBus.gain.value = 1.0;
+
+        heartbeatGain = audioCtx.createGain();
+        heartbeatGain.gain.value = 0.0;
+
+        cosmicGain = audioCtx.createGain();
+        cosmicGain.gain.value = 0.0;
+
+        heartbeatGain.connect(masterBus);
+        cosmicGain.connect(masterBus);
+        masterBus.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        noiseBuffer = createNoiseBuffer(0.18);
+        buildCosmicSynth();
+      }
+
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+    }
+
+    function buildCosmicSynth() {
+      cosmicOsc1 = audioCtx.createOscillator();
+      cosmicOsc1.type = "sine";
+      cosmicOsc1.frequency.value = 72;
+
+      cosmicOsc2 = audioCtx.createOscillator();
+      cosmicOsc2.type = "triangle";
+      cosmicOsc2.frequency.value = 108;
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 720;
+      filter.Q.value = 0.7;
+
+      cosmicLfo = audioCtx.createOscillator();
+      cosmicLfo.type = "sine";
+      cosmicLfo.frequency.value = 0.08;
+
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 16;
+
+      const oscMix = audioCtx.createGain();
+      oscMix.gain.value = 0.22;
+
+      cosmicLfo.connect(lfoGain);
+      lfoGain.connect(cosmicOsc1.frequency);
+
+      cosmicOsc1.connect(oscMix);
+      cosmicOsc2.connect(oscMix);
+      oscMix.connect(filter);
+      filter.connect(cosmicGain);
+
+      cosmicOsc1.start();
+      cosmicOsc2.start();
+      cosmicLfo.start();
+    }
+
+    function playHeartbeatOneShot(startTime) {
+      const master = audioCtx.createGain();
+      master.gain.value = 1.0;
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 210;
+
+      const compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.value = -22;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 10;
+      compressor.attack.value = 0.002;
+      compressor.release.value = 0.26;
+
+      master.connect(filter);
+      filter.connect(compressor);
+      compressor.connect(heartbeatGain);
+
+      function beat(start, freqStart, freqEnd, peak, duration) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freqStart, start);
+        osc.frequency.exponentialRampToValueAtTime(freqEnd, start + duration);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(peak, start + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+        osc.connect(gain);
+        gain.connect(master);
+
+        osc.start(start);
+        osc.stop(start + duration + 0.05);
+      }
+
+      function knock(start, peak, duration, centerFreq) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = noiseBuffer;
+
+        const band = audioCtx.createBiquadFilter();
+        band.type = "bandpass";
+        band.frequency.value = centerFreq;
+        band.Q.value = 0.8;
+
+        const low = audioCtx.createBiquadFilter();
+        low.type = "lowpass";
+        low.frequency.value = 260;
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(peak, start + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+        src.connect(band);
+        band.connect(low);
+        low.connect(gain);
+        gain.connect(master);
+
+        src.start(start);
+        src.stop(start + duration + 0.04);
+      }
+
+      beat(startTime, 84, 41, 1.00, 0.13);
+      knock(startTime, 0.34, 0.08, 122);
+
+      beat(startTime + 0.15, 76, 34, 0.88, 0.11);
+      knock(startTime + 0.15, 0.26, 0.07, 108);
+    }
+
+    function startHeartbeatMode() {
+      ensureAudio();
+      mode = 1;
+
+      cosmicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      cosmicGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.1);
+
+      heartbeatGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      heartbeatGain.gain.linearRampToValueAtTime(0.92, audioCtx.currentTime + 0.45);
+
+      if (hbIntervalId) clearInterval(hbIntervalId);
+
+      const scheduleBeat = function() {
+        const t0 = audioCtx.currentTime + 0.02;
+        playHeartbeatOneShot(t0);
+
+        triggerVisualPulse(1.18);
+        setTimeout(function() {
+          triggerVisualPulse(0.88);
+        }, 150);
+      };
+
+      scheduleBeat();
+      hbIntervalId = setInterval(scheduleBeat, 1180);
+
+      flashStatus("heartbeat mode");
+    }
+
+    function startCosmicMode() {
+      ensureAudio();
+      mode = 2;
+
+      if (hbIntervalId) {
+        clearInterval(hbIntervalId);
+        hbIntervalId = null;
+      }
+
+      heartbeatGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      heartbeatGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 0.8);
+
+      cosmicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      cosmicGain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 1.4);
+
+      flashStatus("cosmic mode");
+    }
+
+    function startSilentMode() {
+      ensureAudio();
+      mode = 0;
+
+      if (hbIntervalId) {
+        clearInterval(hbIntervalId);
+        hbIntervalId = null;
+      }
+
+      heartbeatGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      heartbeatGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.3);
+
+      cosmicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      cosmicGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 2.2);
+
+      flashStatus("silent mode");
+    }
+
+    function cycleMode() {
+      if (mode === 0) startHeartbeatMode();
+      else if (mode === 1) startCosmicMode();
+      else startSilentMode();
+    }
+
+    // =============================
+    // Pointer
+    // =============================
+    let dragging = false;
+    let prevX = 0;
+    let prevY = 0;
+    let velX = 0;
+    let velY = 0;
+    let pointerDownX = 0;
+    let pointerDownY = 0;
+    let moved = false;
+
+    renderer.domElement.addEventListener("pointerdown", function(e) {
+      dragging = true;
+      moved = false;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
+      prevX = e.clientX;
+      prevY = e.clientY;
+      velX = 0;
+      velY = 0;
+    });
+
+    window.addEventListener("pointermove", function(e) {
+      if (!dragging) return;
+
+      const dx = e.clientX - prevX;
+      const dy = e.clientY - prevY;
+
+      if (
+        Math.abs(e.clientX - pointerDownX) > 5 ||
+        Math.abs(e.clientY - pointerDownY) > 5
+      ) {
+        moved = true;
+      }
+
+      velX = dx * 0.0055;
+      velY = dy * 0.0055;
+
+      root.rotation.y += velX;
+      root.rotation.x += velY;
+
+      prevX = e.clientX;
+      prevY = e.clientY;
+    });
+
+    window.addEventListener("pointerup", function() {
+      if (dragging && !moved) cycleMode();
+      dragging = false;
+    });
+
+    // =============================
+    // Deform
+    // =============================
+    const tempV = new THREE.Vector3();
+
+    function deformBlob(time) {
+      const positions = positionAttr.array;
+
+      pulse += (pulseTarget - pulse) * 0.10;
+      pulseTarget *= 0.88;
+      morphJolt *= 0.90;
+
+      const breathing = 1.0 + Math.sin(time * 0.64) * 0.028;
+      const pulseScale = 1.0 + pulse * 0.18;
+
+      for (let i = 0; i < vertexCount; i++) {
+        const ix = i * 3;
+        const x = originalPositions[ix];
+        const y = originalPositions[ix + 1];
+        const z = originalPositions[ix + 2];
+
+        tempV.set(x, y, z).normalize();
+        const s = seeds[i];
+
+        const wave1 = Math.sin(tempV.x * 1.7 + time * 0.74 + s * 0.004 + morphSeedA) * 0.30;
+        const wave2 = Math.sin(tempV.y * 2.0 - time * 0.86 + s * 0.005 + morphSeedB) * 0.22;
+        const wave3 = Math.sin((tempV.x + tempV.z) * 1.9 + time * 0.62 + s * 0.006 + morphPhase) * 0.16;
+        const jelly = Math.sin(time * 4.2 + s * 0.015) * 0.024 * morphJolt;
+
+        const radialOffset = (wave1 + wave2 + wave3) * morphAmount + jelly;
+        const scale = breathing * pulseScale * (1 + radialOffset);
+
+        positions[ix] = x * scale;
+        positions[ix + 1] = y * scale;
+        positions[ix + 2] = z * scale;
+      }
+
+      positionAttr.needsUpdate = true;
+      geometry.computeVertexNormals();
+
+      const glowPulse = 1 + pulse * 0.07 + Math.sin(time * 0.9) * 0.012;
+      aura.scale.setScalar(1.18 * glowPulse);
+      outerAura.scale.setScalar(1 + pulse * 0.040 + Math.sin(time * 0.5) * 0.008);
+      innerGlow.scale.setScalar(1 + pulse * 0.06 + Math.sin(time * 1.4) * 0.020);
+      innerCoreShell.scale.setScalar(1 + pulse * 0.05 + Math.sin(time * 1.2) * 0.015);
+    }
+
+    // =============================
+    // Animate
+    // =============================
+    const clock = new THREE.Clock();
+    const mixColor = new THREE.Color();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = clock.getDelta();
+      const t = clock.elapsedTime;
+
+      deformBlob(t);
+
+      if (!dragging) {
+        root.rotation.y += 0.00215;
+        root.rotation.x = Math.sin(t * 0.3) * 0.08;
+      } else {
+        velX *= 0.92;
+        velY *= 0.92;
+        root.rotation.y += velX;
+        root.rotation.x += velY;
+      }
+
+      blob.rotation.y += 0.001;
+      wire.rotation.y += 0.001;
+      aura.rotation.y -= 0.0007;
+      aura.rotation.x += 0.00035;
+
+      innerCore.rotation.x += 0.010;
+      innerCore.rotation.y += 0.014;
+      innerSparkles.rotation.y += 0.0032;
+      innerSparkles.rotation.x -= 0.0018;
+      innerGlow.rotation.y -= 0.0009;
+
+      let norm = 0;
+      if (analyser && dataArray) {
+        analyser.getByteFrequencyData(dataArray);
+        norm = dataArray.reduce((s, v) => s + v, 0) / dataArray.length / 255;
+      }
+
+      // =============================
+      // Deep blue-purple tuning
+      // =============================
+      const drift = 0.5 + 0.5 * Math.sin(t * 0.42);
+      const bodyMix = Math.min(1, 0.18 + pulse * 0.22 + drift * 0.05 + norm * 0.04);
+      const emissiveMix = Math.min(1, 0.05 + pulse * 0.08 + norm * 0.05);
+
+      mixColor.copy(PALETTE.bodyBase).lerp(PALETTE.bodyHi, bodyMix);
+      coreMaterial.color.copy(mixColor);
+
+      mixColor.copy(PALETTE.bodyGlow).lerp(PALETTE.deepCyan, emissiveMix);
+      coreMaterial.emissive.copy(mixColor);
+
+      coreMaterial.emissiveIntensity = 0.96 + pulse * 0.58 + norm * 0.14 + Math.sin(t * 1.2) * 0.03;
+      coreMaterial.opacity = 0.82 + pulse * 0.04;
+
+      mixColor.copy(PALETTE.bodyHi).lerp(PALETTE.coreCyan, 0.18 + pulse * 0.10 + norm * 0.04);
+      innerCoreMaterial.color.copy(mixColor);
+
+      mixColor.copy(PALETTE.auraPurple).lerp(PALETTE.auraCyan, 0.14 + pulse * 0.08);
+      innerCoreMaterial.emissive.copy(mixColor);
+
+      innerCoreMaterial.emissiveIntensity = 0.44 + pulse * 0.50 + norm * 0.10;
+      innerCoreMaterial.opacity = 0.28 + pulse * 0.07;
+
+      mixColor.copy(PALETTE.auraPurple).lerp(PALETTE.auraCyan, 0.05 + norm * 0.02);
+      aura.material.color.copy(mixColor);
+
+      mixColor.copy(PALETTE.auraPurple).lerp(PALETTE.auraCyan, 0.18 + norm * 0.03);
+      outerAura.material.color.copy(mixColor);
+
+      wire.material.color.copy(PALETTE.bodyHi);
+
+      bloomShell1.material.color.copy(PALETTE.auraPurple);
+      bloomShell2.material.color.copy(PALETTE.auraCyan);
+
+      innerGlow.material.color.copy(PALETTE.coreCyan);
+      innerCoreShell.material.color.copy(PALETTE.coreWhite);
+
+      innerGlow.material.opacity = 0.05 + pulse * 0.05 + norm * 0.015;
+      innerCoreShell.material.opacity = 0.035 + pulse * 0.04;
+      outerAura.material.opacity = 0.028 + pulse * 0.018 + norm * 0.006;
+      aura.material.opacity = 0.10 + pulse * 0.06 + norm * 0.008;
+      wire.material.opacity = 0.010 + pulse * 0.014;
+
+      bloomShell1.material.opacity = 0.06 + pulse * 0.12 + norm * 0.008;
+      bloomShell2.material.opacity = 0.016 + pulse * 0.04 + norm * 0.006;
+      bloomShell1.scale.setScalar(1.0 + pulse * 0.09);
+      bloomShell2.scale.setScalar(1.0 + pulse * 0.07);
+
+      innerSparkles.material.opacity = 0.40 + pulse * 0.10 + Math.sin(t * 2.6) * 0.02;
+      particles.material.opacity = 0.50 + pulse * 0.05 + Math.sin(t * 2.0) * 0.02;
+
+      // pulse shells
+      for (let i = pulseShellGroup.children.length - 1; i >= 0; i--) {
+        const shell = pulseShellGroup.children[i];
+        shell.userData.life += dt;
+        const p = shell.userData.life / shell.userData.maxLife;
+        const scale = 1 + p * shell.userData.speed;
+        shell.scale.setScalar(scale);
+        shell.material.opacity = (1 - p) * 0.14;
+
+        if (p >= 1) {
+          pulseShellGroup.remove(shell);
+          shell.geometry.dispose();
+          shell.material.dispose();
+        }
+      }
+
+      // outer particle drift
+      const arr = particleGeo.attributes.position.array;
+      for (let i = 0; i < particleCount; i++) {
+        const ix = i * 3;
+        const ox = pOffsets[i];
+        arr[ix] += Math.sin(t * 0.7 + ox) * 0.0008;
+        arr[ix + 1] += Math.cos(t * 0.9 + ox * 1.2) * 0.0008;
+        arr[ix + 2] += Math.sin(t * 0.8 + ox * 1.7) * 0.0008;
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+
+      particles.rotation.y += 0.0009;
+      particles.rotation.x -= 0.0003;
+
+      starsFar.rotation.y += 0.00015;
+      starsNear.rotation.y -= 0.00022;
+
+      // lights
+      lightA.intensity = 2.45 + norm * 0.34 + pulse * 0.50;
+      lightB.intensity = 1.15 + norm * 0.18 + pulse * 0.14;
+      lightC.intensity = 0.48 + pulse * 0.26 + norm * 0.08;
+
+      lightA.position.set(Math.cos(t * 0.7) * 5.4, Math.sin(t * 0.9) * 2.6, 7);
+      lightB.position.set(Math.cos(t * 0.55 + 1.8) * -5.0, Math.sin(t * 0.75 + 0.6) * 2.2, 6);
+
+      // camera
+      camera.position.x = Math.sin(t * 0.18) * 0.22;
+      camera.position.y = 0.14 + Math.cos(t * 0.14) * 0.10;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", function() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
