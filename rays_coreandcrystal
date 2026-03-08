@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PARALLEL UNIVERSE — Gate of Singularity</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#070d18;
+  overflow:hidden;
+  height:100vh;
+  font-family:'Cinzel Decorative', cursive;
+  cursor:crosshair;
+}
+canvas { display:block; }
+
+/* ── UI: SPACE ── */
+#space-ui {
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:10;
+  transition: opacity 1.5s ease;
+}
+.sp-title {
+  position:absolute;
+  top:40px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(16px,2.5vw,28px);
+  letter-spacing:8px;
+  color:#c084fc;
+  text-shadow:
+    0 0 16px rgba(192,132,252,0.95),
+    0 0 40px rgba(168,85,247,0.32);
+  white-space:nowrap;
+  transition: color 2s, text-shadow 2s;
+}
+.sp-title.glass-mode {
+  color:#e0f4ff;
+  text-shadow:
+    0 0 16px rgba(224,244,255,0.85),
+    0 0 40px rgba(100,200,255,0.35);
+}
+.sp-phase {
+  position:absolute;
+  top:86px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(7px,0.85vw,10px);
+  letter-spacing:7px;
+  color:rgba(192,132,252,0.45);
+  white-space:nowrap;
+  transition: color 1.5s;
+}
+.sp-msg {
+  position:absolute;
+  bottom:70px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(9px,1.1vw,13px);
+  letter-spacing:5px;
+  color:rgba(190,205,255,0.0);
+  white-space:nowrap;
+  transition: color 0.5s ease;
+}
+.sp-hint {
+  position:absolute;
+  bottom:22px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(7px,0.8vw,9px);
+  letter-spacing:5px;
+  color:rgba(142,164,190,0.48);
+  white-space:nowrap;
+  transition: color 1s, opacity 1s;
+  animation: pulse 3s infinite;
+}
+
+/* ── UI: OCEAN ── */
+#ocean-ui {
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:20;
+  opacity:0;
+  transition: opacity 3s ease;
+}
+.oc-title {
+  position:absolute;
+  top:43px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(14px,2.2vw,26px);
+  letter-spacing:6px;
+  color:#22d3ee;
+  text-shadow:
+    0 0 16px rgba(34,211,238,0.9),
+    0 0 40px rgba(6,182,212,0.4);
+  white-space:nowrap;
+}
+.oc-sub {
+  position:absolute;
+  bottom:18px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(8px,1vw,11px);
+  letter-spacing:5px;
+  color:rgba(34,211,238,0.35);
+  white-space:nowrap;
+}
+.oc-prompt {
+  position:absolute;
+  bottom:110px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(11px,1.3vw,15px);
+  letter-spacing:4px;
+  color:rgba(34,211,238,0.6);
+  white-space:nowrap;
+  text-align:center;
+  line-height:2.4;
+  transition:opacity 0.8s ease;
+}
+.oc-bars {
+  position:absolute;
+  bottom:44px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:3px;
+  align-items:flex-end;
+  height:36px;
+}
+.oc-bars span {
+  width:5px;
+  background:rgba(34,211,238,0.5);
+  border-radius:2px 2px 0 0;
+  min-height:2px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity:0.28; }
+  50% { opacity:0.8; }
+}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="space-ui">
+  <div class="sp-title" id="sp-title">CORE</div>
+  <div class="sp-phase" id="sp-phase">WRIGGLING</div>
+  <div class="sp-msg" id="sp-msg"></div>
+  <div class="sp-hint" id="sp-hint">HOLD TO EVOLVE / 長押しで真理へ</div>
+</div>
+
+<div id="ocean-ui">
+  <div class="oc-title">CRYSTAL</div>
+  <div class="oc-prompt" id="oc-prompt">— click to activate —<br>クリックで波長を同期</div>
+  <div class="oc-bars" id="oc-bars"></div>
+  <div class="oc-sub">AUDIO VISUALIZER — TEAM PARALLEL</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ============================================================
+// 1. 基本セットアップ
+// ============================================================
+const PAL = {
+  spaceBg:0x070d18,
+  oceanBg:0x04111d,
+  oceanFog:0x082235,
+  corePurple:0x745cff,
+  coreLavender:0xbdaeff,
+  coreCyan:0x22d3ee,
+  deepCyan:0x0ea5d8,
+  seabed:0x08283d,
+  seabedGlow:0x02131d,
+  surface:0x53dcff,
+  curtain:0x8cefff,
+  memoryBg:0x0d0b18,
+  memoryAura:0x1a0f28
+};
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(0, 0, 14);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias:true,
+  powerPreference:"high-performance"
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(PAL.spaceBg, 1); // #070d18
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  1.0,
+  0.6,
+  0.15
+);
+composer.addPass(bloomPass);
+
+const spaceGroup = new THREE.Group();
+const oceanGroup = new THREE.Group();
+scene.add(spaceGroup);
+scene.add(oceanGroup);
+oceanGroup.visible = false;
+
+// ============================================================
+// 2. 宇宙（SPACE）の構築
+// ============================================================
+const bgOrbData = [
+  { color:0x9f7dff, pos:[  9,  5,-22], r:5.5, op:0.08 },
+  { color:0x22d3ee, pos:[-11, -3,-25], r:7.0, op:0.06 },
+  { color:0xbdaeff, pos:[  1, -9,-20], r:6.0, op:0.07 },
+  { color:0x3ea7ff, pos:[ -6,  8,-18], r:4.0, op:0.05 },
+  { color:0x7cf2ff, pos:[ 12, -7,-30], r:8.0, op:0.04 }
+];
+bgOrbData.forEach(({ color, pos, r, op }) => {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent:true,
+      opacity:op,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+  mesh.position.set(...pos);
+  spaceGroup.add(mesh);
+});
+
+const nebulaSpec = [
+  { c:PAL.corePurple,   n:320 },
+  { c:PAL.coreCyan,     n:260 },
+  { c:PAL.coreLavender, n:240 },
+  { c:0xffffff,         n:160 },
+  { c:0x5cc8ff,         n:120 }
+];
+
+const nebulaParticles = [];
+nebulaSpec.forEach(({ c, n }) => {
+  const pos = new Float32Array(n * 3);
+  for(let i=0;i<n;i++){
+    const r  = 10 + Math.random() * 25;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+    pos[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+    pos[i*3+2] = r * Math.cos(ph);
+  }
+
+  const pts = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(pos, 3)
+    ),
+    new THREE.PointsMaterial({
+      color:c,
+      size:0.07 + Math.random() * 0.06,
+      transparent:true,
+      opacity:0.45,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+
+  spaceGroup.add(pts);
+  nebulaParticles.push(pts);
+});
+
+const glitterDustPos = new Float32Array(1500 * 3);
+for(let i=0; i<1500; i++){
+  glitterDustPos[i*3]   = (Math.random() - 0.5) * 150;
+  glitterDustPos[i*3+1] = (Math.random() - 0.5) * 150;
+  glitterDustPos[i*3+2] = (Math.random() - 0.5) * 100;
+}
+const glitterDust = new THREE.Points(
+  new THREE.BufferGeometry().setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(glitterDustPos, 3)
+  ),
+  new THREE.PointsMaterial({
+    color:0xe7f6ff,
+    size:0.05,
+    transparent:true,
+    opacity:0.38,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
+  })
+);
+spaceGroup.add(glitterDust);
+
+const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
+  format:THREE.RGBAFormat,
+  generateMipmaps:true,
+  minFilter:THREE.LinearMipmapLinearFilter
+});
+const cubeCamera = new THREE.CubeCamera(0.5, 150, cubeRT);
+spaceGroup.add(cubeCamera);
+
+const spLightGroup = new THREE.Group();
+spLightGroup.add(new THREE.AmbientLight(0x0b1230, 1.45));
+const dynLights = [
+  { l: new THREE.PointLight(PAL.corePurple, 4.6, 35), b:[ 5, 5, 7] },
+  { l: new THREE.PointLight(PAL.coreCyan,   3.8, 30), b:[-5,-3, 5] }
+];
+dynLights.forEach(({ l, b }) => {
+  l.position.set(...b);
+  spLightGroup.add(l);
+});
+spaceGroup.add(spLightGroup);
+
+const RADIUS = 2.0;
+const sphereGeo = new THREE.SphereGeometry(RADIUS, 90, 90);
+const origPos = new Float32Array(sphereGeo.attributes.position.array);
+const vertN = origPos.length / 3;
+
+const noiseFreq  = new Float32Array(vertN);
+const noiseAmpR  = new Float32Array(vertN);
+const noiseAmpT  = new Float32Array(vertN);
+const noisePhase = new Float32Array(vertN);
+
+for(let i=0; i<vertN; i++){
+  noiseFreq[i]  = 0.6 + Math.random() * 1.4;
+  noiseAmpR[i]  = 0.06 + Math.random() * 0.28;
+  noiseAmpT[i]  = 0.03 + Math.random() * 0.12;
+  noisePhase[i] = Math.random() * Math.PI * 2;
+}
+
+const PW = { cR:0.22, cG:0.14, cB:0.96, em:0.84, m:0.10, r:0.36, op:0.92 };
+const PG = { cR:0.8,  cG:0.95, cB:1.0,  em:0.0,  m:0.1,  r:0.0,  op:1.0 };
+const CONV_DUR = 3.5;
+
+const matCore = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(PW.cR, PW.cG, PW.cB),
+  emissive: new THREE.Color(0.10, 0.08, 0.55),
+  emissiveIntensity: PW.em,
+  metalness: PW.m,
+  roughness: PW.r,
+  transparent: true,
+  opacity: PW.op,
+  transmission: 0.0,
+  ior: 2.1,
+  clearcoat: 1.0,
+  side: THREE.FrontSide
+});
+const coreMesh = new THREE.Mesh(sphereGeo, matCore);
+spaceGroup.add(coreMesh);
+
+const wireMat = new THREE.MeshBasicMaterial({
+  color: PAL.coreLavender,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.07,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const wireMesh = new THREE.Mesh(sphereGeo, wireMat);
+wireMesh.scale.setScalar(1.003);
+spaceGroup.add(wireMesh);
+
+const fresnelMat = new THREE.ShaderMaterial({
+  uniforms: {
+    color:{ value: new THREE.Color(0xc26cff) },
+    fresnelBias:{ value: 0.0 },
+    fresnelScale:{ value: 1.5 },
+    fresnelPower:{ value: 3.0 },
+    opacity:{ value: 0.8 }
+  },
+  vertexShader: `
+    varying vec3 vViewPosition;
+    varying vec3 vNormal;
+    void main() {
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      vViewPosition = -mvPosition.xyz;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 color;
+    uniform float fresnelBias;
+    uniform float fresnelScale;
+    uniform float fresnelPower;
+    uniform float opacity;
+    varying vec3 vViewPosition;
+    varying vec3 vNormal;
+    void main() {
+      vec3 viewDir = normalize(vViewPosition);
+      float f = fresnelBias + fresnelScale * pow(1.0 - max(dot(viewDir, vNormal), 0.0), fresnelPower);
+      gl_FragColor = vec4(color * f, f * opacity);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const fresnelMesh = new THREE.Mesh(sphereGeo, fresnelMat);
+fresnelMesh.scale.setScalar(1.008);
+spaceGroup.add(fresnelMesh);
+
+const bloom1Mat = new THREE.MeshBasicMaterial({
+  color: 0x9b6dff,
+  transparent: true,
+  opacity: 0.06,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.BackSide
+});
+const bloom2Mat = new THREE.MeshBasicMaterial({
+  color: 0x39dfff,
+  transparent: true,
+  opacity: 0.028,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.BackSide
+});
+const bloomShell1 = new THREE.Mesh(new THREE.SphereGeometry(RADIUS * 1.35, 28, 28), bloom1Mat);
+const bloomShell2 = new THREE.Mesh(new THREE.SphereGeometry(RADIUS * 1.85, 28, 28), bloom2Mat);
+spaceGroup.add(bloomShell1, bloomShell2);
+
+const CORE_GLITTER_COUNT = 1400;
+const coreGlitterPos  = new Float32Array(CORE_GLITTER_COUNT * 3);
+const coreGlitterBase = new Float32Array(CORE_GLITTER_COUNT * 3);
+const coreGlitterSeed = new Float32Array(CORE_GLITTER_COUNT);
+const coreGlitterCol  = new Float32Array(CORE_GLITTER_COUNT * 3);
+
+for(let i=0; i<CORE_GLITTER_COUNT; i++){
+  const r  = RADIUS * (1.02 + Math.random() * 0.42);
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  const x = r * Math.sin(ph) * Math.cos(th);
+  const y = r * Math.sin(ph) * Math.sin(th);
+  const z = r * Math.cos(ph);
+
+  coreGlitterPos[i*3]   = coreGlitterBase[i*3]   = x;
+  coreGlitterPos[i*3+1] = coreGlitterBase[i*3+1] = y;
+  coreGlitterPos[i*3+2] = coreGlitterBase[i*3+2] = z;
+  coreGlitterSeed[i] = Math.random() * Math.PI * 2;
+
+  const roll = Math.random();
+  const c = roll < 0.34
+    ? new THREE.Color(0xffffff)
+    : roll < 0.68
+      ? new THREE.Color(0xbfefff)
+      : new THREE.Color(0xb68cff);
+
+  coreGlitterCol[i*3]   = c.r;
+  coreGlitterCol[i*3+1] = c.g;
+  coreGlitterCol[i*3+2] = c.b;
+}
+const coreGlitterGeo = new THREE.BufferGeometry()
+  .setAttribute('position', new THREE.BufferAttribute(coreGlitterPos, 3))
+  .setAttribute('color', new THREE.BufferAttribute(coreGlitterCol, 3));
+
+const coreGlitterMat = new THREE.PointsMaterial({
+  size: 0.048,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.72,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const coreGlitter = new THREE.Points(coreGlitterGeo, coreGlitterMat);
+spaceGroup.add(coreGlitter);
+
+const flashMat = new THREE.MeshBasicMaterial({
+  color:0xffffff,
+  transparent:true,
+  opacity:0.0,
+  depthWrite:false,
+  blending:THREE.AdditiveBlending
+});
+const flashMesh = new THREE.Mesh(new THREE.PlaneGeometry(100,100), flashMat);
+flashMesh.position.z = 10;
+scene.add(flashMesh);
+
+// ============================================================
+// 2.5 帰還後の小さな黄色コア
+// ============================================================
+const memoryCorePivot = new THREE.Group();
+memoryCorePivot.visible = false;
+
+const memoryCore = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.26, 0),
+  new THREE.MeshBasicMaterial({
+    color: 0xffdd55,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  })
+);
+
+const memoryCoreHalo = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.48, 0),
+  new THREE.MeshBasicMaterial({
+    color: 0xffb300,
+    transparent: true,
+    opacity: 0.26,
+    blending: THREE.AdditiveBlending,
+    wireframe: true,
+    depthWrite: false
+  })
+);
+memoryCorePivot.add(memoryCore, memoryCoreHalo);
+spaceGroup.add(memoryCorePivot);
+
+const memoryCoreTrail = new THREE.Mesh(
+  new THREE.SphereGeometry(0.72, 18, 18),
+  new THREE.MeshBasicMaterial({
+    color: 0xfff1a8,
+    transparent: true,
+    opacity: 0.05,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.BackSide
+  })
+);
+memoryCorePivot.add(memoryCoreTrail);
+
+// ============================================================
+// 3. 深海（OCEAN）の構築
+// ============================================================
+const O_BUBBLE_COUNT = 180;
+const bubblePos2 = new Float32Array(O_BUBBLE_COUNT * 3);
+const bubbleSpd  = new Float32Array(O_BUBBLE_COUNT);
+const bubbleDrf  = new Float32Array(O_BUBBLE_COUNT);
+
+for(let i=0;i<O_BUBBLE_COUNT;i++){
+  bubblePos2[i*3]   = (Math.random()-.5)*20;
+  bubblePos2[i*3+1] = (Math.random()-.5)*20;
+  bubblePos2[i*3+2] = (Math.random()-.5)*10;
+  bubbleSpd[i] = 0.008 + Math.random() * 0.014;
+  bubbleDrf[i] = Math.random() * Math.PI * 2;
+}
+const bubbleGeo = new THREE.BufferGeometry().setAttribute(
+  'position',
+  new THREE.BufferAttribute(bubblePos2, 3)
+);
+oceanGroup.add(new THREE.Points(
+  bubbleGeo,
+  new THREE.PointsMaterial({
+    color:0x7fffff,
+    size:0.10,
+    transparent:true,
+    opacity:0.45,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false,
+    sizeAttenuation:true
+  })
+));
+
+const plankPts = [];
+for(let i=0;i<600;i++){
+  plankPts.push(
+    (Math.random()-.5)*40,
+    (Math.random()-.5)*40,
+    (Math.random()-.5)*25
+  );
+}
+oceanGroup.add(new THREE.Points(
+  new THREE.BufferGeometry().setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(plankPts,3)
+  ),
+  new THREE.PointsMaterial({
+    color:0x00ffcc,
+    size:0.035,
+    transparent:true,
+    opacity:0.18,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
+  })
+));
+
+const seabedGeo = new THREE.PlaneGeometry(30, 24, 70, 56);
+const seabedPos = seabedGeo.attributes.position;
+for(let i=0; i<seabedPos.count; i++){
+  seabedPos.setZ(
+    i,
+    Math.sin(seabedPos.getX(i)*0.22)*0.55 +
+    Math.cos(seabedPos.getY(i)*0.18)*0.35 +
+    Math.sin((seabedPos.getX(i)+seabedPos.getY(i))*0.14)*0.28
+  );
+}
+seabedGeo.computeVertexNormals();
+
+const seabed = new THREE.Mesh(
+  seabedGeo,
+  new THREE.MeshPhysicalMaterial({
+    color: PAL.seabed,
+    emissive: new THREE.Color(PAL.seabedGlow),
+    emissiveIntensity: 0.22,
+    roughness: 0.96,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.96,
+    side: THREE.DoubleSide
+  })
+);
+seabed.rotation.x = -Math.PI / 2;
+seabed.position.y = -6.2;
+oceanGroup.add(seabed);
+
+const seaLineMat = new THREE.LineBasicMaterial({
+  color:0x0c5478,
+  transparent:true,
+  opacity:0.22
+});
+for(let k=0;k<6;k++){
+  const pts = [];
+  for(let j=0;j<20;j++){
+    pts.push(new THREE.Vector3(
+      -10 + j*1.05,
+      -4.6 - k*0.46 + (Math.random()-.5)*0.20,
+      -3.2 - k*1.15
+    ));
+  }
+  oceanGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), seaLineMat));
+}
+
+const waterSurfaceGeo = new THREE.PlaneGeometry(34, 28, 90, 72);
+const waterSurfaceBase = waterSurfaceGeo.attributes.position.array.slice();
+const waterSurface = new THREE.Mesh(
+  waterSurfaceGeo,
+  new THREE.MeshBasicMaterial({
+    color: PAL.surface,
+    transparent: true,
+    opacity: 0.13,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  })
+);
+waterSurface.rotation.x = -Math.PI / 2;
+waterSurface.position.y = 6.2;
+oceanGroup.add(waterSurface);
+
+const rays = [];
+for(let i=0;i<18;i++){
+  const rMat = new THREE.MeshBasicMaterial({
+    color: PAL.curtain,
+    transparent: true,
+    opacity: 0.036 + Math.random() * 0.020,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  // 水面y=6.2から海底y=-6.2へ、明るい光柱として差し込む
+  // 横移動ではなく、上端を水面に残したまま縦方向の届きだけで進化を見せる
+  const rayH = 19 + Math.random() * 8;
+  const rayW = 1.0 + Math.random() * 1.9;
+  const ry = new THREE.Mesh(
+    new THREE.PlaneGeometry(rayW, rayH, 1, 1),
+    rMat
+  );
+  ry.position.set(
+    (Math.random() - 0.5) * 18,
+    6.2 - rayH / 2,
+    -1.2 - Math.random() * 5.2
+  );
+  ry.rotation.y = (Math.random() - 0.5) * 0.22;
+  ry.userData = {
+    p: Math.random() * Math.PI * 2,
+    sway: 0.08 + Math.random() * 0.12,
+    x0: ry.position.x,
+    z0: ry.position.z,
+    h: rayH,
+    w: rayW,
+    d: 0.88 + Math.random() * 0.34,
+    baseOpacity: 0.038 + Math.random() * 0.014,
+    m: rMat
+  };
+  oceanGroup.add(ry);
+  rays.push(ry);
+}
+
+const ocLightGroup = new THREE.Group();
+ocLightGroup.add(new THREE.AmbientLight(0x002233,1.2));
+const pLight = new THREE.PointLight(0x00ddff, 2.5, 40);
+pLight.position.set(5,5,5);
+ocLightGroup.add(pLight);
+const cLight = new THREE.PointLight(0x00ffcc, 0, 15);
+ocLightGroup.add(cLight);
+oceanGroup.add(ocLightGroup);
+
+const matCry = new THREE.MeshPhysicalMaterial({
+  color:0x00ccff,
+  emissive:0x003344,
+  emissiveIntensity:0.5,
+  metalness:0.05,
+  roughness:0.05,
+  transparent:true,
+  opacity:0.82,
+  transmission:0.6,
+  clearcoat:1.0,
+  side:THREE.DoubleSide
+});
+const matWr = new THREE.MeshBasicMaterial({
+  color:0x22d3ee,
+  wireframe:true,
+  transparent:true,
+  opacity:0.22,
+  blending:THREE.AdditiveBlending,
+  depthWrite:false
+});
+
+const cryPivot = new THREE.Group();
+const wrPivot  = new THREE.Group();
+oceanGroup.add(cryPivot, wrPivot);
+
+const merkabaC = new THREE.Group();
+const merkabaW = new THREE.Group();
+const t1 = new THREE.Mesh(new THREE.TetrahedronGeometry(1,0), matCry);
+const t2 = new THREE.Mesh(new THREE.TetrahedronGeometry(1,0), matCry);
+t2.scale.set(-1,-1,-1);
+merkabaC.add(t1,t2);
+
+const tw1 = new THREE.Mesh(new THREE.TetrahedronGeometry(1.006,0), matWr);
+const tw2 = new THREE.Mesh(new THREE.TetrahedronGeometry(1.006,0), matWr);
+tw2.scale.set(-1,-1,-1);
+merkabaW.add(tw1,tw2);
+
+const dodecaC = new THREE.Mesh(new THREE.DodecahedronGeometry(1.02,0), matCry);
+const dodecaW = new THREE.Mesh(new THREE.DodecahedronGeometry(1.026,0), matWr);
+
+const icosaStageC = new THREE.Group();
+const icosaShellC = new THREE.Mesh(new THREE.IcosahedronGeometry(1,0), matCry);
+const icosaShellW = new THREE.Mesh(new THREE.IcosahedronGeometry(1.006,0), matWr);
+
+// 子コア：1つに統合した小さな黄色コア（母コアの体内に宿る命）
+const icosaInnerLight = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.19, 0),
+  new THREE.MeshBasicMaterial({
+    color: 0xfff07a,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false
+  })
+);
+icosaInnerLight.renderOrder = 5;
+
+// 子コアを内側から照らすPointLight
+const icosaYellowLight = new THREE.PointLight(0xffdd55, 0, 6.5);
+icosaYellowLight.position.set(0, 0, 0);
+
+icosaStageC.add(icosaShellC, icosaInnerLight, icosaYellowLight);
+
+const shapes = [
+  { c:new THREE.Mesh(new THREE.OctahedronGeometry(1,0),matCry), w:new THREE.Mesh(new THREE.OctahedronGeometry(1.006,0),matWr) },
+  { c:dodecaC,                                                  w:dodecaW },
+  { c:icosaStageC,                                              w:icosaShellW },
+  { c:merkabaC,                                                 w:merkabaW }
+];
+shapes.forEach(s=>{
+  s.c.userData = { s:0.001 };
+  s.c.scale.setScalar(0.001);
+  s.w.scale.setScalar(0.001);
+  s.c.visible = false;
+  s.w.visible = false;
+  cryPivot.add(s.c);
+  wrPivot.add(s.w);
+});
+
+const matCo = new THREE.MeshBasicMaterial({
+  color:0xffffff,
+  transparent:true,
+  opacity:0.18,
+  blending:THREE.AdditiveBlending,
+  depthWrite:false
+});
+oceanGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.13,16,16), matCo));
+
+const matHa = new THREE.MeshBasicMaterial({
+  color:0x006688,
+  transparent:true,
+  opacity:0.07,
+  blending:THREE.AdditiveBlending,
+  depthWrite:false,
+  side:THREE.BackSide
+});
+oceanGroup.add(new THREE.Mesh(new THREE.SphereGeometry(1.9,32,32), matHa));
+
+// 特異点キー
+const singPivot = new THREE.Group();
+const singMat = new THREE.MeshBasicMaterial({
+  color: 0xffea00,
+  transparent: true,
+  opacity: 0.9,
+  blending: THREE.AdditiveBlending
+});
+const singularity = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), singMat);
+const singHalo = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.5, 0),
+  new THREE.MeshBasicMaterial({
+    color: 0xffaa00,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    wireframe: true
+  })
+);
+singularity.add(singHalo);
+
+const singHit = new THREE.Mesh(
+  new THREE.SphereGeometry(0.85, 12, 12),
+  new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false
+  })
+);
+singularity.add(singHit);
+
+singularity.position.set(3.0, 1.5, 1.0);
+singPivot.add(singularity);
+oceanGroup.add(singPivot);
+singPivot.visible = false;
+
+// ワームホール
+const wormholeGeo = new THREE.CylinderGeometry(8, 0.05, 50, 64, 1, true);
+wormholeGeo.rotateX(Math.PI / 2);
+
+const wormholeMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main(){
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float time;
+    varying vec2 vUv;
+    void main(){
+      float spiral = sin(vUv.y * 30.0 - time * 15.0 + vUv.x * 20.0);
+      float glow = smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+      vec3 col = mix(vec3(0.62, 0.49, 1.0), vec3(0.13, 0.83, 0.93), spiral * 0.5 + 0.5);
+      gl_FragColor = vec4(col, glow * (spiral * 0.5 + 0.5));
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+  depthWrite: false
+});
+const wormhole = new THREE.Mesh(wormholeGeo, wormholeMat);
+wormhole.position.z = -10;
+scene.add(wormhole);
+wormhole.visible = false;
+
+// ============================================================
+// 4. 状態管理
+// ============================================================
+const ST = {
+  WRIGGLING:0,
+  CONVERGING:1,
+  GLASS:2,
+  DROPPING:3,
+  IMPACT:4,
+  OCEAN:5,
+  WORMHOLE:6
+};
+
+let state = ST.WRIGGLING;
+let convT = 0;
+let dropVY = 0;
+let switched = false;
+let wormholeT = 0;
+let holdSpike = 0;
+let memoryUniverse = false;
+let spaceAmbienceOn = false;
+
+const spUi    = document.getElementById('space-ui');
+const spTitle = document.getElementById('sp-title');
+const spPhase = document.getElementById('sp-phase');
+const spMsg   = document.getElementById('sp-msg');
+const spHint  = document.getElementById('sp-hint');
+const ocUi    = document.getElementById('ocean-ui');
+
+let pDownT = 0;
+let isPDown = false;
+let pMoved = false;
+let sx = 0, sy = 0;
+let drag = false;
+let px = 0, py = 0;
+let vx = 0, vy = 0;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  isPDown = true;
+  pMoved = false;
+  pDownT = performance.now();
+  sx = e.clientX;
+  sy = e.clientY;
+  px = e.clientX;
+  py = e.clientY;
+  vx = 0;
+  vy = 0;
+  drag = true;
+});
+
+window.addEventListener('pointermove', (e) => {
+  if(!drag) return;
+
+  if(Math.abs(e.clientX-sx) > 10 || Math.abs(e.clientY-sy) > 10) pMoved = true;
+  vx = (e.clientX - px) * 0.01;
+  vy = (e.clientY - py) * 0.01;
+
+  if(state < ST.IMPACT){
+    coreMesh.rotation.y += vx;
+    coreMesh.rotation.x += vy;
+  } else if (state === ST.OCEAN) {
+    cryPivot.rotation.y += vx;
+    cryPivot.rotation.x += vy;
+    wrPivot.rotation.y += vx;
+    wrPivot.rotation.x += vy;
+  }
+
+  px = e.clientX;
+  py = e.clientY;
+});
+
+window.addEventListener('pointerup', () => {
+  isPDown = false;
+  drag = false;
+
+  if(!pMoved){
+    if(state === ST.WRIGGLING){
+      if(performance.now() - pDownT > 600){
+        state = ST.CONVERGING;
+        spPhase.textContent = 'CONVERGING';
+        spHint.style.opacity = '0';
+        spMsg.textContent = "物質の再構築を開始します";
+        spMsg.style.color = 'rgba(210,220,255,0.88)';
+        setTimeout(() => { spMsg.style.color = 'rgba(210,220,255,0.0)'; }, 3200);
+      } else {
+        spMsg.textContent = "— 意識を集中し、長押ししてください —";
+        spMsg.style.color = 'rgba(170,190,255,0.95)';
+        setTimeout(() => {
+          if(state===ST.WRIGGLING) spMsg.style.color = 'rgba(170,190,255,0.0)';
+        }, 2000);
+      }
+    } else if(state === ST.GLASS){
+      state = ST.DROPPING;
+      spPhase.textContent = 'DROPPING TO OCEAN';
+      spHint.style.opacity = '0';
+    } else if(state === ST.OCEAN){
+      if(cMode === 3 && isPlay){
+        const mouse = new THREE.Vector2(
+          (sx / innerWidth) * 2 - 1,
+          -(sy / innerHeight) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        if (raycaster.intersectObject(singHit, true).length > 0) {
+          triggerWormhole();
+          return;
+        }
+      }
+      handleOceanClick();
+    }
+  }
+});
+
+// ============================================================
+// 5. オーディオ
+// ============================================================
+const CHORDS = [
+  [220,261.63,329.63,440,523.25],
+  [261.63,329.63,392,523.25,659.25],
+  [396,417,528,639,741]
+];
+const C_NAMES = ["— A minor —","— C Major —","— Solfeggio —","— Deep Ocean —"];
+const VIS = [
+  {h:0.54, s:0.90, l:0.55, es:1.0,  el:0.20, ei:[0.4,1.4],  bl:[1.0,2.5], p:[2.5,7.0], c:[0,6.0]},
+  {h:0.50, s:0.85, l:0.62, es:0.9,  el:0.24, ei:[0.5,1.6],  bl:[1.2,2.8], p:[2.8,8.0], c:[0,7.0]},
+  {h:0.50, s:0.62, l:0.50, es:0.78, el:0.14, ei:[0.28,0.95],bl:[0.6,1.0], p:[2.1,5.3], c:[0,4.0]},
+  {h:0.82, s:0.85, l:0.45, es:0.95, el:0.25, ei:[0.40,1.2],bl:[1.5,3.0], p:[2.0,5.0], c:[0,6.0]}
+];
+
+let aCtx, aNode, dArr, mGain, cBus, dBus, dNodes = null;
+let aReady = false, isPlay = false, cMode = 0, cStep = -1;
+let o1A = [], o2A = [], g1A = [], g2A = [];
+
+const ocPrompt = document.getElementById('oc-prompt');
+const fBar = document.getElementById('oc-bars');
+const bars = [];
+for(let i=0;i<20;i++){
+  const s = document.createElement('span');
+  fBar.appendChild(s);
+  bars.push(s);
+}
+
+function initAudio(){
+  if(!aCtx) {
+    aCtx = new (window.AudioContext || window.webkitAudioContext)();
+    aNode = aCtx.createAnalyser();
+    aNode.fftSize = 64;
+    aNode.smoothingTimeConstant = 0.82;
+    dArr = new Uint8Array(aNode.frequencyBinCount);
+
+    mGain = aCtx.createGain();
+    mGain.gain.value = 0;
+    cBus = aCtx.createGain();
+    cBus.gain.value = 0;
+    dBus = aCtx.createGain();
+    dBus.gain.value = 0;
+
+    cBus.connect(mGain);
+    dBus.connect(mGain);
+    mGain.connect(aNode);
+    aNode.connect(aCtx.destination);
+  }
+
+  o1A = [];
+  o2A = [];
+  g1A = [];
+  g2A = [];
+
+  CHORDS[0].forEach((f,i)=>{
+    const o1 = aCtx.createOscillator();
+    o1.type = 'sine';
+    o1.frequency.value = f;
+    const g1 = aCtx.createGain();
+    g1.gain.value = 0.5 / 5;
+    o1.connect(g1);
+    g1.connect(cBus);
+    o1.start();
+    o1A.push(o1);
+    g1A.push(g1);
+
+    const o2 = aCtx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.value = f * 2.003;
+    const g2 = aCtx.createGain();
+    g2.gain.value = 0.15 / 5;
+    o2.connect(g2);
+    g2.connect(cBus);
+    o2.start();
+    o2A.push(o2);
+    g2A.push(g2);
+
+    const lfo = aCtx.createOscillator();
+    lfo.frequency.value = 0.22 + i * 0.06;
+    const lg = aCtx.createGain();
+    lg.gain.value = f * 0.004;
+    lfo.connect(lg);
+    lg.connect(o1.frequency);
+    lfo.start();
+  });
+}
+
+function setFreq(idx, t){
+  CHORDS[idx].forEach((f,i)=>{
+    o1A[i].frequency.linearRampToValueAtTime(f, t + 2.5);
+    o2A[i].frequency.linearRampToValueAtTime(f * 2.003, t + 2.5);
+    g1A[i].gain.linearRampToValueAtTime(0.5 / 5, t + 2.5);
+    g2A[i].gain.linearRampToValueAtTime(0.15 / 5, t + 2.5);
+  });
+}
+
+function buildDeep(){
+  dNodes = [];
+
+  [30,45,60,96].forEach((f,i)=>{
+    const o = aCtx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+
+    const g = aCtx.createGain();
+    g.gain.value = 0;
+
+    const l = aCtx.createOscillator();
+    l.frequency.value = 0.08 + i * 0.04;
+    const lg = aCtx.createGain();
+    lg.gain.value = i===3 ? 0.018 : 0.04;
+    l.connect(lg);
+    lg.connect(g.gain);
+
+    o.connect(g);
+    g.connect(dBus);
+    o.start();
+    l.start();
+
+    g.gain.setValueAtTime(0, aCtx.currentTime);
+    g.gain.linearRampToValueAtTime(i===3 ? 0.025 : 0.08 + i * 0.015, aCtx.currentTime + 3);
+    dNodes.push({o,g,l});
+  });
+
+  const nb = aCtx.createBuffer(1, aCtx.sampleRate*2, aCtx.sampleRate);
+  const d = nb.getChannelData(0);
+  for(let i=0;i<nb.length;i++) d[i] = Math.random()*2 - 1;
+
+  const ns = aCtx.createBufferSource();
+  ns.buffer = nb;
+  ns.loop = true;
+
+  const l1 = aCtx.createBiquadFilter();
+  l1.type = 'lowpass';
+  l1.frequency.value = 180;
+
+  const g = aCtx.createGain();
+  g.gain.value = 0;
+
+  ns.connect(l1);
+  l1.connect(g);
+  g.connect(dBus);
+  ns.start();
+
+  g.gain.setValueAtTime(0, aCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0.06, aCtx.currentTime + 2.5);
+  dNodes.push({o:ns,g});
+}
+
+function ensureDeepBed(){
+  if(aCtx && !dNodes) buildDeep();
+}
+
+function enterMemoryAmbience(){
+  if(!aCtx) return;
+
+  ensureDeepBed();
+  aCtx.resume();
+  cBus.gain.cancelScheduledValues(aCtx.currentTime);
+  dBus.gain.cancelScheduledValues(aCtx.currentTime);
+  mGain.gain.cancelScheduledValues(aCtx.currentTime);
+
+  cBus.gain.setValueAtTime(cBus.gain.value, aCtx.currentTime);
+  dBus.gain.setValueAtTime(dBus.gain.value, aCtx.currentTime);
+  mGain.gain.setValueAtTime(mGain.gain.value, aCtx.currentTime);
+
+  cBus.gain.linearRampToValueAtTime(0.0, aCtx.currentTime + 1.6);
+  dBus.gain.linearRampToValueAtTime(0.22, aCtx.currentTime + 2.2);
+  mGain.gain.linearRampToValueAtTime(0.32, aCtx.currentTime + 2.2);
+
+  if(dNodes){
+    dNodes.forEach((n, i) => {
+      if(n.g && n.g.gain){
+        const target = i === dNodes.length - 1 ? 0.02 : 0.045 + i * 0.01;
+        n.g.gain.cancelScheduledValues(aCtx.currentTime);
+        n.g.gain.setValueAtTime(n.g.gain.value, aCtx.currentTime);
+        n.g.gain.linearRampToValueAtTime(target, aCtx.currentTime + 2.2);
+      }
+    });
+  }
+
+  spaceAmbienceOn = true;
+}
+
+function clearMemoryAmbience(t = aCtx ? aCtx.currentTime : 0){
+  if(!aCtx) return;
+  cBus.gain.linearRampToValueAtTime(0.0, t + 1.2);
+  dBus.gain.linearRampToValueAtTime(0.0, t + 1.4);
+  mGain.gain.linearRampToValueAtTime(0.0, t + 1.6);
+  spaceAmbienceOn = false;
+}
+
+function disposeDeepBed(delayMs = 0){
+  if(!dNodes) return;
+  const oldNodes = dNodes;
+  setTimeout(() => {
+    oldNodes.forEach(n => { try { n.o.stop(); } catch(e){} });
+    if(dNodes === oldNodes) dNodes = null;
+  }, delayMs);
+}
+
+function actMode(m, t){
+  const p = cMode;
+  cMode = m;
+
+  if(m === 3){
+    cBus.gain.linearRampToValueAtTime(0, t + 1.8);
+    dBus.gain.linearRampToValueAtTime(0.9, t + 2);
+    buildDeep();
+  } else {
+    if(p === 3){
+      dBus.gain.linearRampToValueAtTime(0, t + 2);
+      cBus.gain.linearRampToValueAtTime(0.16, t + 2.8);
+      setFreq(m, t + 0.5);
+      setTimeout(()=>{
+        if(dNodes){
+          dNodes.forEach(n => { try { n.o.stop(); } catch(e){} });
+          dNodes = null;
+        }
+      }, 2300);
+    } else {
+      cBus.gain.linearRampToValueAtTime(0.16, t + 2);
+      setFreq(m, t);
+    }
+  }
+
+  ocPrompt.style.opacity = '1';
+  ocPrompt.innerHTML = C_NAMES[m];
+  setTimeout(()=>ocPrompt.style.opacity='0', 3500);
+}
+
+function handleOceanClick(){
+  if(!aReady){
+    initAudio();
+    mGain.gain.linearRampToValueAtTime(0.9, aCtx.currentTime + 3);
+    cBus.gain.linearRampToValueAtTime(0.16, aCtx.currentTime + 3);
+    aReady = true;
+    isPlay = true;
+    cMode = 0;
+    cStep = 0;
+    spaceAmbienceOn = false;
+    actMode(0, aCtx.currentTime);
+  }
+  else if(!isPlay){
+    aCtx.resume();
+    if(spaceAmbienceOn){
+      dBus.gain.linearRampToValueAtTime(0.0, aCtx.currentTime + 1.5);
+      disposeDeepBed(1700);
+      spaceAmbienceOn = false;
+    }
+    mGain.gain.linearRampToValueAtTime(0.9, aCtx.currentTime + 2);
+    isPlay = true;
+    cMode = 0;
+    cStep = 0;
+    actMode(0, aCtx.currentTime);
+  }
+  else {
+    cStep++;
+    if(cStep === 1) actMode(1, aCtx.currentTime);
+    else if(cStep === 2) actMode(2, aCtx.currentTime);
+    else if(cStep === 3) actMode(3, aCtx.currentTime);
+    else if(cStep === 4) actMode(0, aCtx.currentTime);
+    else {
+      cBus.gain.linearRampToValueAtTime(0, aCtx.currentTime + 2.6);
+      dBus.gain.linearRampToValueAtTime(0, aCtx.currentTime + 2.8);
+      isPlay = false;
+      cStep = -1;
+      ocPrompt.style.opacity = '1';
+      ocPrompt.innerHTML = 'SILENT MODE';
+      setTimeout(()=>aCtx.suspend(), 3000);
+    }
+  }
+}
+
+function triggerWormhole() {
+  state = ST.WORMHOLE;
+  wormholeT = 0;
+  wormhole.visible = true;
+  wormhole.scale.setScalar(0.01);
+  ocUi.style.opacity = '0';
+  singPivot.visible = false;
+  memoryUniverse = true;
+
+  if(mGain){
+    cBus.gain.linearRampToValueAtTime(0.0, aCtx.currentTime + 0.9);
+    dBus.gain.linearRampToValueAtTime(0.18, aCtx.currentTime + 1.4);
+    mGain.gain.linearRampToValueAtTime(0.34, aCtx.currentTime + 1.4);
+  }
+  if(dNodes){
+    dNodes.forEach((n, i) => {
+      if(n.g && n.g.gain){
+        const target = i === dNodes.length - 1 ? 0.02 : 0.05 + i * 0.01;
+        n.g.gain.linearRampToValueAtTime(target, aCtx.currentTime + 1.4);
+      }
+    });
+  }
+}
+
+function resetToUniverse() {
+  state = ST.WRIGGLING;
+  camera.position.set(0, 0, 14);
+
+  oceanGroup.visible = false;
+  spaceGroup.visible = true;
+  wormhole.visible = false;
+  switched = false;
+
+  renderer.setClearColor(memoryUniverse ? PAL.memoryBg : PAL.spaceBg, 1);
+  scene.fog = null;
+
+  convT = 0;
+  dropVY = 0;
+  wormholeT = 0;
+  holdSpike = 0;
+
+  coreMesh.position.set(0,0,0);
+  wireMesh.position.set(0,0,0);
+  fresnelMesh.position.set(0,0,0);
+  bloomShell1.position.set(0,0,0);
+  bloomShell2.position.set(0,0,0);
+  coreGlitter.position.set(0,0,0);
+
+  coreMesh.rotation.set(0,0,0);
+  wireMesh.rotation.set(0,0,0);
+  fresnelMesh.rotation.set(0,0,0);
+  bloomShell1.rotation.set(0,0,0);
+  bloomShell2.rotation.set(0,0,0);
+
+  flashMat.opacity = 0.0;
+
+  spUi.style.opacity = '1';
+  ocUi.style.opacity = '0';
+  spPhase.textContent = memoryUniverse ? 'REBIRTH / OCEAN MEMORY' : 'REBIRTH';
+  spTitle.classList.remove('glass-mode');
+  spTitle.style.color = memoryUniverse ? '#d7cd7a' : '';
+  spTitle.style.textShadow = memoryUniverse
+    ? '0 0 16px rgba(255,221,85,0.85), 0 0 40px rgba(34,211,238,0.24)'
+    : '';
+  spHint.textContent = 'HOLD TO EVOLVE / 長押しで真理へ';
+  spHint.style.opacity = '1';
+  spHint.style.color = memoryUniverse ? 'rgba(230,220,140,0.62)' : '';
+  spMsg.textContent = memoryUniverse ? '深海の記憶を持った宇宙へ帰還しました' : '';
+  spMsg.style.color = memoryUniverse ? 'rgba(232,225,160,0.92)' : 'rgba(190,205,255,0.0)';
+  if(memoryUniverse){
+    setTimeout(() => {
+      if(state === ST.WRIGGLING) spMsg.style.color = 'rgba(232,225,160,0.0)';
+    }, 3200);
+  }
+
+  isPlay = false;
+  cStep = -1;
+  cMode = 0;
+  singPivot.visible = false;
+
+  if(memoryUniverse) enterMemoryAmbience();
+  else if(dNodes){
+    dNodes.forEach(n => { try { n.o.stop(); } catch(e){} });
+    dNodes = null;
+  }
+
+  setTimeout(() => {
+    if(state === ST.WRIGGLING){
+      spPhase.textContent = 'WRIGGLING';
+    }
+  }, 2200);
+}
+
+// ============================================================
+// 6. ユーティリティ
+// ============================================================
+function lerp(a,b,t){ return a + (b-a)*t; }
+function smoothstep(x){ x = Math.max(0, Math.min(1, x)); return x*x*(3-2*x); }
+function noise(t,freq,phase){ return Math.sin(t*freq+phase)*Math.cos(t*freq*0.73+phase*1.31); }
+function noise2(t,freq,phase){ return Math.cos(t*freq*1.17+phase*0.89)*Math.sin(t*freq*0.61+phase*1.77); }
+function noise3(t,freq,phase){ return Math.sin(t*freq*1.3+phase*2.1); }
+
+// ============================================================
+// 7. メインレンダリングループ
+// ============================================================
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+
+  // ── SPACE フェーズ ──
+  if(state < ST.IMPACT){
+    // 宇宙フェーズ全体で背景色を統一（WRIGGLING/CONVERGING/GLASS/DROPPING 全て）
+    renderer.setClearColor(memoryUniverse ? PAL.memoryBg : PAL.spaceBg, 1);
+
+    let noiseAmp = 1.0;
+
+    if(state === ST.WRIGGLING){
+      if(isPDown && !pMoved){
+        const holdMs = Math.max(0, performance.now() - pDownT - 120);
+        const target = Math.min(1, holdMs / 900);
+        holdSpike += (target - holdSpike) * 0.12;
+
+        fresnelMat.uniforms.opacity.value =
+          0.56 + 0.22 * Math.sin(elapsed * 2.0) + holdSpike * 0.42;
+      } else {
+        holdSpike += (0 - holdSpike) * 0.10;
+
+        fresnelMat.uniforms.opacity.value =
+          0.56 + 0.22 * Math.sin(elapsed * 2.0) + holdSpike * 0.10;
+      }
+
+      if (flashMat.opacity > 0) {
+        flashMat.opacity = Math.max(0, flashMat.opacity - dt * 0.5);
+      }
+    } else {
+      holdSpike += (0 - holdSpike) * 0.12;
+    }
+
+    if(state === ST.CONVERGING){
+      convT = Math.min(convT + dt / CONV_DUR, 1.0);
+      noiseAmp = 1.0 - smoothstep(convT);
+      fresnelMat.uniforms.opacity.value = lerp(0.76, 0.0, smoothstep(convT));
+      if(convT >= 1.0){
+        state = ST.GLASS;
+        spPhase.textContent = 'PURE GLASS';
+        spTitle.classList.add('glass-mode');
+        spHint.textContent = 'CLICK TO DROP';
+        spHint.style.opacity = '1';
+        noiseAmp = 0;
+      }
+    } else if(state >= ST.GLASS){
+      noiseAmp = 0;
+      convT = 1.0;
+    }
+
+    const positions = sphereGeo.attributes.position.array;
+    for(let i=0; i<vertN; i++){
+      const ox = origPos[i*3];
+      const oy = origPos[i*3+1];
+      const oz = origPos[i*3+2];
+
+      if(noiseAmp > 0.001 || holdSpike > 0.001){
+        const f = noiseFreq[i];
+        const aR = noiseAmpR[i];
+        const aT = noiseAmpT[i];
+        const p = noisePhase[i];
+
+        const len = Math.sqrt(ox*ox + oy*oy + oz*oz);
+        const nx = ox / len;
+        const ny = oy / len;
+        const nz = oz / len;
+
+        const n1 = noise(elapsed, f, p);
+        const n2 = noise(elapsed, f * 0.5, p + 2.1);
+        const fuzz = noise3(elapsed, f * 6.0, p) * 0.015;
+
+        const baseDisp = noiseAmp * (aR * (n1 * 0.7 + n2 * 0.3) + fuzz);
+        const n3 = noise2(elapsed, f * 0.8, p + 1.4);
+
+        const spikeA = Math.pow(
+          Math.max(
+            0,
+            Math.sin(elapsed * 10.0 + p * 2.7 + nx * 8.5 + ny * 7.3 + nz * 9.1)
+          ),
+          5.0
+        );
+
+        const spikeB = Math.pow(
+          Math.max(
+            0,
+            Math.sin(elapsed * 13.0 + p * 3.9 + nx * 12.0 - ny * 10.0 + nz * 11.0)
+          ),
+          6.0
+        );
+
+        const spikeDisp =
+          holdSpike * (0.05 + aR * 0.45) * (spikeA * 0.7 + spikeB * 0.3);
+
+        const pulseDisp =
+          holdSpike * Math.sin(elapsed * 7.0 + p) * 0.018;
+
+        const disp = baseDisp + spikeDisp + pulseDisp;
+
+        const ty = nz;
+        const tz = -ny;
+        const tLen = Math.sqrt(ty*ty + tz*tz) + 0.001;
+
+        const tang =
+          noiseAmp * aT * n3 +
+          holdSpike * 0.035 * Math.sin(elapsed * 9.0 + p * 1.7 + nx * 6.0);
+
+        positions[i*3]   = ox + nx * disp + (ty / tLen) * tang * 0.6;
+        positions[i*3+1] = oy + ny * disp;
+        positions[i*3+2] = oz + nz * disp + (tz / tLen) * tang * 0.6;
+      } else {
+        positions[i*3]   = ox;
+        positions[i*3+1] = oy;
+        positions[i*3+2] = oz;
+      }
+    }
+    sphereGeo.attributes.position.needsUpdate = true;
+    sphereGeo.computeVertexNormals();
+
+    const mt = smoothstep(convT);
+    matCore.color.setRGB(
+      lerp(PW.cR, PG.cR, mt),
+      lerp(PW.cG, PG.cG, mt),
+      lerp(PW.cB, PG.cB, mt)
+    );
+    matCore.emissiveIntensity = lerp(PW.em, 0, mt);
+    matCore.metalness = lerp(PW.m, PG.m, mt);
+    matCore.roughness = lerp(PW.r, PG.r, mt);
+    matCore.opacity = lerp(PW.op, PG.op, mt);
+    matCore.transmission = lerp(0, 0.95, Math.max(0, mt * 1.5 - 0.5));
+
+    const preDropGlass = (state >= ST.GLASS && state < ST.DROPPING);
+
+    bloom1Mat.opacity =
+      lerp(0.06, 0.024, mt) +
+      (state === ST.WRIGGLING
+        ? (0.012 + Math.sin(elapsed * 1.9) * 0.008)
+        : (preDropGlass ? (0.004 + Math.sin(elapsed * 1.6) * 0.002) : 0)) +
+      holdSpike * 0.06;
+
+    bloom2Mat.opacity =
+      lerp(0.028, 0.012, mt) +
+      (state === ST.WRIGGLING
+        ? (0.006 + Math.sin(elapsed * 2.4) * 0.004)
+        : (preDropGlass ? (0.002 + Math.sin(elapsed * 1.9) * 0.0015) : 0)) +
+      holdSpike * 0.035;
+
+    wireMat.opacity = lerp(0.07, 0.0, mt) + holdSpike * 0.03;
+
+    if(state >= ST.GLASS){
+      matCore.envMap = cubeRT.texture;
+      matCore.envMapIntensity = 2.0;
+      matCore.needsUpdate = true;
+
+      coreMesh.visible = false;
+      wireMesh.visible = false;
+      fresnelMesh.visible = false;
+      bloomShell1.visible = false;
+      bloomShell2.visible = false;
+      coreGlitter.visible = false;
+
+      cubeCamera.position.copy(coreMesh.position);
+      cubeCamera.update(renderer, scene);
+
+      coreMesh.visible = true;
+      wireMesh.visible = (state < ST.DROPPING);
+      fresnelMesh.visible = true;
+      bloomShell1.visible = true;
+      bloomShell2.visible = true;
+      coreGlitter.visible = true;
+
+      fresnelMat.uniforms.opacity.value = 0.18 + Math.sin(elapsed * 2.8) * 0.04;
+    }
+
+    if(state === ST.DROPPING){
+      dropVY -= 0.006 * (1.0 + Math.min(Math.abs(coreMesh.position.y) / 16, 1) * 3);
+      coreMesh.position.y += dropVY;
+      wireMesh.position.y = coreMesh.position.y;
+      fresnelMesh.position.y = coreMesh.position.y;
+      coreMesh.rotation.z += 0.015;
+
+      bloomShell1.position.copy(coreMesh.position);
+      bloomShell2.position.copy(coreMesh.position);
+      coreGlitter.position.copy(coreMesh.position);
+
+      if(coreMesh.position.y < -20){
+        state = ST.IMPACT;
+        flashMat.opacity = 1.0;
+        spUi.style.opacity = '0';
+      }
+    }
+
+    if(!drag && state < ST.DROPPING){
+      coreMesh.rotation.y += 0.003;
+      coreMesh.rotation.x += 0.0008;
+      vx = 0;
+      vy = 0;
+    } else if(!drag){
+      vx *= 0.88;
+      vy *= 0.88;
+      coreMesh.rotation.y += vx;
+      coreMesh.rotation.x += vy;
+    }
+
+    wireMesh.rotation.copy(coreMesh.rotation);
+    fresnelMesh.rotation.copy(coreMesh.rotation);
+    bloomShell1.rotation.copy(coreMesh.rotation);
+    bloomShell2.rotation.copy(coreMesh.rotation);
+
+    const memoryVisible = memoryUniverse && state === ST.WRIGGLING;
+    memoryCorePivot.visible = memoryVisible;
+    if(memoryVisible){
+      const orbitX = 1.9 + Math.sin(elapsed * 0.8) * 0.18;
+      const orbitY = 0.62 + Math.sin(elapsed * 1.6) * 0.20;
+      const orbitZ = 0.55 + Math.cos(elapsed * 0.95) * 0.26;
+      memoryCorePivot.position.set(
+        coreMesh.position.x + orbitX,
+        coreMesh.position.y + orbitY,
+        coreMesh.position.z + orbitZ
+      );
+      memoryCorePivot.rotation.y += 0.025;
+      memoryCorePivot.rotation.x += 0.012;
+      memoryCoreHalo.rotation.x -= 0.018;
+      memoryCoreHalo.rotation.y += 0.014;
+      memoryCoreTrail.scale.setScalar(1.0 + Math.sin(elapsed * 2.2) * 0.08);
+      memoryCore.material.opacity = 0.78 + Math.sin(elapsed * 2.8) * 0.12;
+      memoryCoreHalo.material.opacity = 0.18 + Math.sin(elapsed * 2.0) * 0.06;
+    }
+
+    fresnelMat.uniforms.color.value.set(memoryUniverse ? 0x8fcfff : 0xc26cff);
+    bloom2Mat.color.setHex(memoryUniverse ? 0x7fe9ff : 0x39dfff);
+
+    const gp = coreGlitterGeo.attributes.position.array;
+    for(let i=0; i<CORE_GLITTER_COUNT; i++){
+      const ix = i * 3;
+      const s = coreGlitterSeed[i];
+      gp[ix]   = coreGlitterBase[ix]   + Math.sin(elapsed * 1.8 + s) * 0.028;
+      gp[ix+1] = coreGlitterBase[ix+1] + Math.cos(elapsed * 1.5 + s * 1.3) * 0.028;
+      gp[ix+2] = coreGlitterBase[ix+2] + Math.sin(elapsed * 2.1 + s * 0.7) * 0.028;
+    }
+    coreGlitterGeo.attributes.position.needsUpdate = true;
+
+    coreGlitter.rotation.y += 0.0018;
+    coreGlitter.rotation.x -= 0.0007;
+    coreGlitterMat.opacity =
+      Math.max(0, lerp(0.72, 0.0, mt) + Math.sin(elapsed * 3.2) * 0.06 + holdSpike * 0.12);
+
+    dynLights[0].l.position.set(
+      dynLights[0].b[0] * Math.cos(elapsed * 0.35),
+      dynLights[0].b[1] * Math.sin(elapsed * 0.25),
+      dynLights[0].b[2]
+    );
+    dynLights[1].l.position.set(
+      dynLights[1].b[0] * Math.cos(elapsed * 0.28),
+      dynLights[1].b[1] * Math.sin(elapsed * 0.22),
+      dynLights[1].b[2]
+    );
+
+    nebulaParticles.forEach((p,i)=>{
+      p.rotation.y += (i % 2 === 0 ? 0.00015 : -0.0001);
+    });
+    glitterDust.rotation.y += 0.00018;
+    glitterDust.rotation.x -= 0.00006;
+  }
+
+  // ── 次元切り替え ──
+  if(state === ST.IMPACT){
+    if(flashMat.opacity >= 1.0 && !switched){
+      spaceGroup.visible = false;
+      oceanGroup.visible = true;
+      renderer.setClearColor(PAL.oceanBg, 1);
+      scene.fog = new THREE.FogExp2(PAL.oceanFog, 0.032);
+      setTimeout(() => ocUi.style.opacity = '1', 800);
+      switched = true;
+    }
+
+    if(switched){
+      flashMat.opacity = Math.max(0, flashMat.opacity - 0.02);
+      if(flashMat.opacity <= 0) state = ST.OCEAN;
+    }
+  }
+
+  // ── OCEAN フェーズ ──
+  if(state === ST.OCEAN || (state === ST.IMPACT && switched) || state === ST.WORMHOLE){
+    const bp = bubbleGeo.attributes.position;
+    for(let i=0;i<O_BUBBLE_COUNT;i++){
+      bp.array[i*3+1] += (cMode === 3 ? bubbleSpd[i] * 0.4 : bubbleSpd[i]);
+      bp.array[i*3]   += Math.sin(elapsed * 0.6 + bubbleDrf[i]) * 0.003;
+      if(bp.array[i*3+1] > 12){
+        bp.array[i*3+1] = -12;
+        bp.array[i*3] = (Math.random() - .5) * 20;
+      }
+    }
+    bp.needsUpdate = true;
+
+    let nrm = 0;
+    if(aReady && aNode){
+      aNode.getByteFrequencyData(dArr);
+      if(isPlay){
+        nrm = dArr.reduce((s,v)=>s+v,0) / dArr.length / 255;
+        for(let i=0;i<20;i++){
+          const v = dArr[Math.min(i * 3, dArr.length - 1)] / 255;
+          bars[i].style.height = (2 + v * 34) + 'px';
+          bars[i].style.opacity = 0.25 + v * 0.75;
+          bars[i].style.background = `hsla(${cMode===3?290:185+v*40},80%,65%,0.9)`;
+        }
+      } else {
+        for(let i=0;i<20;i++){
+          bars[i].style.height = '2px';
+          bars[i].style.opacity = '0.12';
+        }
+      }
+    }
+
+    const wsPos = waterSurfaceGeo.attributes.position.array;
+    for(let i=0; i<wsPos.length/3; i++){
+      const ix = i * 3;
+      const bx = waterSurfaceBase[ix];
+      const by = waterSurfaceBase[ix + 1];
+      const h =
+        Math.sin(elapsed * 1.15 + bx * 0.22 + by * 0.18) * 0.16 +
+        Math.cos(elapsed * 0.72 + bx * 0.14 - by * 0.16) * 0.08 +
+        nrm * Math.sin(elapsed * 1.6 + bx * 0.28) * 0.08;
+      wsPos[ix + 2] = h;
+    }
+    waterSurfaceGeo.attributes.position.needsUpdate = true;
+    waterSurfaceGeo.computeVertexNormals();
+
+    rays.forEach((r) => {
+      const breath = 0.5 + 0.5 * Math.sin(elapsed * 0.55 + r.userData.p);
+
+      // ── 「宇宙の太陽の光が立体に近づいていく」演出 ──────────────
+      // cMode 0: 水面付近のほのかな光（まだ遠い）
+      // cMode 1: 少し深く届き始める
+      // cMode 2: 立体の高さまで届く（宇宙への郷愁が芽生える）
+      // cMode 3: マカバ全開・光が立体を包む（宇宙へ帰るトリガー）
+      const modeFactor = cMode / 3; // 0, 0.33, 0.66, 1.0
+
+      // opacityの上限：マカバまで抑える
+      const opacityMax = cMode === 3
+        ? 0.17                              // マカバ：全開
+        : 0.028 + modeFactor * 0.044;       // 0:0.028, 1:0.043, 2:0.057
+
+      // 音圧の影響：cModeが上がるほど音に反応しやすくなる
+      const nrmGain = cMode === 3
+        ? 0.075
+        : 0.010 + modeFactor * 0.016;       // 0:0.010, 1:0.015, 2:0.021
+
+      // 到達深度：cModeが上がると光が下まで伸びる
+      const triggerReach = THREE.MathUtils.clamp(
+        modeFactor * 0.50 + nrm * (0.15 + modeFactor * 0.20),
+        0, 1
+      );
+      const depthReach = smoothstep(triggerReach);
+
+      // scaleY：水面上端を固定して下方向へ伸ばす
+      const rayScaleY = 1.0
+        + r.userData.d * (0.04 + depthReach * (0.10 + modeFactor * 0.22))
+        + nrm * (0.05 + modeFactor * 0.12)
+        + breath * 0.025;
+      const rayScaleX = 1.0 + nrm * 0.06 + breath * 0.025;
+
+      r.scale.x = rayScaleX;
+      r.scale.y = rayScaleY;
+      r.position.y = 6.2 - (r.userData.h * rayScaleY) / 2;
+
+      r.userData.m.opacity = THREE.MathUtils.clamp(
+        r.userData.baseOpacity * (0.3 + modeFactor * 0.7) +
+        breath * 0.005 +
+        Math.sin(elapsed * 0.32 + r.userData.p) * 0.003 +
+        depthReach * 0.010 * (0.2 + modeFactor * 0.8) +
+        nrm * nrmGain,
+        r.userData.baseOpacity * 0.2,
+        opacityMax
+      );
+
+      const driftX = Math.sin(elapsed * 0.18 + r.userData.p) * r.userData.sway;
+      const driftZ = Math.cos(elapsed * 0.15 + r.userData.p) * r.userData.sway * 0.30;
+      r.position.x = r.userData.x0 + driftX;
+      r.position.z = r.userData.z0 + driftZ;
+    });
+
+    singPivot.visible = (cMode === 3 && isPlay && state === ST.OCEAN);
+    if(singPivot.visible) {
+      singPivot.rotation.y = elapsed * 0.6;
+      singPivot.rotation.x = Math.sin(elapsed * 0.5) * 0.2;
+      singularity.scale.setScalar(1.0 + Math.sin(elapsed * 4.0) * 0.2);
+    }
+
+    const m = VIS[cMode];
+    const sc = 1 + nrm * (cMode===3 ? 2.2 : 1.5);
+    cryPivot.scale.setScalar(sc);
+    wrPivot.scale.setScalar(sc * 1.004);
+
+    const icosaBirth = (cMode === 2 && isPlay) ? 1 : 0;
+    const icosaPulse = 1.0 + Math.sin(elapsed * 3.1) * 0.10 + nrm * 0.14;
+    const birthTremor = 0.5 + 0.5 * Math.sin(elapsed * 8.5);
+    // 子コア：球体から立体へ向かう前兆として、わずかにトゲ感のある呼吸を与える
+    icosaInnerLight.rotation.y += 0.026;
+    icosaInnerLight.rotation.x -= 0.012;
+    const baseScale = 1.0 + icosaBirth * (0.18 + icosaPulse * 0.10);
+    const sx = baseScale * (1.0 + icosaBirth * (0.03 + birthTremor * 0.05));
+    const sy = baseScale * (1.0 - icosaBirth * 0.03 + Math.sin(elapsed * 5.2) * 0.015);
+    const sz = baseScale * (1.0 + icosaBirth * (0.02 + (1.0 - birthTremor) * 0.04));
+    icosaInnerLight.scale.set(sx, sy, sz);
+    icosaInnerLight.material.opacity = THREE.MathUtils.clamp(
+      icosaBirth * (0.84 + Math.sin(elapsed * 3.0) * 0.08 + nrm * 0.20),
+      0,
+      0.98
+    );
+    // 子コアを内側から照らす黄色PointLight
+    icosaYellowLight.intensity = icosaBirth * (3.0 + Math.sin(elapsed * 2.6) * 0.6 + nrm * 1.9);
+
+    shapes.forEach((s,idx)=>{
+      s.c.userData.s += ((idx===cMode && isPlay ? 1 : (idx===0 && !isPlay ? 1 : 0.001)) - s.c.userData.s) * 0.06;
+      if(s.c.userData.s < 0.01){
+        s.c.visible = false;
+        s.w.visible = false;
+      } else {
+        s.c.visible = true;
+        s.w.visible = true;
+        s.c.scale.setScalar(s.c.userData.s);
+        s.w.scale.setScalar(s.c.userData.s);
+      }
+    });
+
+    const h = m.h + nrm * (cMode===3 ? 0.06 : 0.12) + (cMode===3 ? Math.sin(elapsed * 0.2) * 0.03 : 0);
+    matCry.color.setHSL(h, m.s, m.l);
+    matWr.color.setHSL(h, m.s, m.l + 0.1);
+
+    let eI = m.ei[0] + nrm * m.ei[1];
+    let cB = m.bl[0] + nrm * m.bl[1];
+    if(cMode===3 && isPlay && state !== ST.WORMHOLE){
+      const b = Math.sin(elapsed * 1.2) * 0.4 + 0.2;
+      eI += b * 0.8;
+      cB += b;
+    }
+
+    matCry.emissive.setHSL(h, m.es, m.el);
+    matCry.emissiveIntensity = eI;
+    bloomPass.strength = isPlay ? cB : 0.2;
+    pLight.intensity = m.p[0] + nrm * m.p[1];
+    cLight.intensity = m.c[0] + nrm * m.c[1];
+    cLight.color.setHSL(h, 0.9, 0.5);
+
+    if(state === ST.OCEAN) {
+      const cA = cMode === 3 ? 0.22 : 0.12;
+      camera.position.x = Math.sin(elapsed * (cMode===3 ? 0.04 : 0.07)) * cA;
+      camera.position.y = Math.cos(elapsed * (cMode===3 ? 0.03 : 0.05)) * cA * 0.7;
+      camera.lookAt(0,0,0);
+
+      if(!drag){
+        cryPivot.rotation.x += 0.005 + nrm * 0.012;
+        cryPivot.rotation.y += 0.01  + nrm * 0.018;
+        wrPivot.rotation.copy(cryPivot.rotation);
+        vx *= 0.88;
+        vy *= 0.88;
+      } else {
+        vx *= 0.88;
+        vy *= 0.88;
+        cryPivot.rotation.y += vx;
+        cryPivot.rotation.x += vy;
+        wrPivot.rotation.copy(cryPivot.rotation);
+      }
+    }
+
+    pLight.position.set(
+      5 * Math.cos(elapsed * 0.3),
+      4 * Math.sin(elapsed * 0.25),
+      5 * Math.cos(elapsed * 0.2)
+    );
+  }
+
+  // ── WORMHOLE ──
+  if (state === ST.WORMHOLE) {
+    wormholeT += dt;
+    wormhole.material.uniforms.time.value = elapsed;
+
+    cryPivot.rotation.y += 0.4;
+    cryPivot.rotation.x += 0.2;
+    wrPivot.rotation.copy(cryPivot.rotation);
+
+    wormhole.scale.lerp(new THREE.Vector3(1,1,1), 0.05);
+    camera.position.z -= dt * 18.0;
+
+    if(wormholeT > 2.0) {
+      flashMat.opacity = Math.min(1.0, flashMat.opacity + dt * 1.5);
+    }
+    if(wormholeT > 3.0) {
+      resetToUniverse();
+    }
+  }
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
